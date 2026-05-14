@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 dotenv.config();
 
@@ -95,41 +95,33 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
     // Generate random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log(`\n==========================================\n🔑 GENERATED OTP FOR ${phone}: ${otp}\n==========================================\n`);
-    
-    // Store in cache with expiration (5 mins)
+    console.log(`🔑 OTP for ${phone}: ${otp}`);
+
+    // Store OTP against the lookup key (phone or email entered by user)
     otpCache.set(phone, { otp, expires: Date.now() + 5 * 60 * 1000 });
 
-    if (user.email) {
-      if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        console.error("Missing email configuration on server!");
-        return res.status(500).json({ success: false, error: 'Email configuration missing on server.' });
-      }
-
-      const host = (process.env.EMAIL_HOST || '').trim();
-      const user_email = (process.env.EMAIL_USER || '').trim();
-      const pass = (process.env.EMAIL_PASS || '').trim();
-      const port = parseInt(process.env.EMAIL_PORT || process.env.MAIL_PORT) || 465;
-
-      const transporter = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        connectionTimeout: 5000,
-        family: 4, // Force IPv4 to prevent ENETUNREACH on Render
-        auth: {
-          user: user_email,
-          pass,
-        }
-      });
-
-      await transporter.sendMail({
-        from: `"SatkarmPuja" <${user_email}>`,
+    // Send via Resend API (works over HTTPS, not blocked by Render)
+    if (user.email && process.env.RESEND_API_KEY) {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { error: emailError } = await resend.emails.send({
+        from: 'SatkarmPuja <onboarding@resend.dev>',
         to: user.email,
         subject: 'SatkarmPuja Login OTP',
-        text: `Namaste ${user.fullName},\n\nYour OTP for secure login is: ${otp}\n\nThis OTP will expire in 5 minutes.\n\nThank you,\nSatkarmPuja Team`
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #f0e0c0;border-radius:12px">
+          <h2 style="color:#8B1A1A">🙏 Namaste, ${user.fullName}</h2>
+          <p>Your one-time password (OTP) for SatkarmPuja login is:</p>
+          <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#c0392b;padding:16px;background:#fff8f0;border-radius:8px;text-align:center">${otp}</div>
+          <p style="color:#888;font-size:13px;margin-top:16px">This OTP will expire in <b>5 minutes</b>. Do not share it with anyone.</p>
+          <p style="color:#888;font-size:13px">– SatkarmPuja Team 🌸</p>
+        </div>`
       });
-      console.log(`OTP Email sent to ${user.email}`);
+      if (emailError) {
+        console.error('Resend error:', emailError);
+      } else {
+        console.log(`✅ OTP Email sent via Resend to ${user.email}`);
+      }
+    } else if (!process.env.RESEND_API_KEY) {
+      console.warn('⚠️ RESEND_API_KEY not set. OTP not emailed.');
     }
 
     res.json({ success: true, message: 'OTP sent successfully to your registered email.' });
