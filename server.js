@@ -95,6 +95,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
 
     // Generate random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log(`\n==========================================\n🔑 GENERATED OTP FOR ${phone}: ${otp}\n==========================================\n`);
     
     // Store in cache with expiration (5 mins)
     otpCache.set(phone, { otp, expires: Date.now() + 5 * 60 * 1000 });
