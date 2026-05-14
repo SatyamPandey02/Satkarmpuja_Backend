@@ -81,7 +81,14 @@ app.post('/api/auth/request-otp', async (req, res) => {
   const { phone } = req.body;
   
   try {
-    const user = await prisma.user.findFirst({ where: { phone } });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: req.body.phone },
+          { email: req.body.phone }
+        ]
+      }
+    });
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
@@ -137,7 +144,14 @@ app.post('/api/auth/login-otp', async (req, res) => {
   otpCache.delete(phone);
 
   try {
-    const user = await prisma.user.findFirst({ where: { phone } });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: req.body.phone },
+          { email: req.body.phone }
+        ]
+      }
+    });
     if (user) {
       if (user.isBlocked) return res.status(403).json({ success: false, error: 'User is blocked' });
       res.json({ success: true, token: user.email, user });
