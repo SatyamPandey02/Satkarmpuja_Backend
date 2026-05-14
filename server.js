@@ -115,6 +115,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
         port,
         secure: port === 465,
         connectionTimeout: 5000,
+        family: 4, // Force IPv4 to prevent ENETUNREACH on Render
         auth: {
           user: user_email,
           pass,
