@@ -99,11 +99,17 @@ app.post('/api/auth/request-otp', async (req, res) => {
     // Store in cache with expiration (5 mins)
     otpCache.set(phone, { otp, expires: Date.now() + 5 * 60 * 1000 });
 
-    if (user.email && process.env.EMAIL_USER) {
+    if (user.email) {
+      if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.error("Missing email configuration on server!");
+        return res.status(500).json({ success: false, error: 'Email configuration missing on server.' });
+      }
+
       const transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST,
         port: parseInt(process.env.EMAIL_PORT) || 465,
         secure: true,
+        connectionTimeout: 5000, // Timeout after 5 seconds if connection hangs
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
