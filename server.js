@@ -104,7 +104,7 @@ app.post('/api/auth/request-otp', async (req, res) => {
     if (user.email && process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const { error: emailError } = await resend.emails.send({
-        from: 'SatkarmPuja <onboarding@resend.dev>',
+        from: process.env.RESEND_FROM_EMAIL || 'SatkarmPuja <onboarding@resend.dev>',
         to: user.email,
         subject: 'SatkarmPuja Login OTP',
         html: `<div style="font-family:sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #f0e0c0;border-radius:12px">
