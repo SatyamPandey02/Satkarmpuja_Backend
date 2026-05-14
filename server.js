@@ -105,19 +105,24 @@ app.post('/api/auth/request-otp', async (req, res) => {
         return res.status(500).json({ success: false, error: 'Email configuration missing on server.' });
       }
 
+      const host = (process.env.EMAIL_HOST || '').trim();
+      const user_email = (process.env.EMAIL_USER || '').trim();
+      const pass = (process.env.EMAIL_PASS || '').trim();
+      const port = parseInt(process.env.EMAIL_PORT || process.env.MAIL_PORT) || 465;
+
       const transporter = nodemailer.createTransport({
-        host: process.env.EMAIL_HOST,
-        port: parseInt(process.env.EMAIL_PORT) || 465,
-        secure: true,
-        connectionTimeout: 5000, // Timeout after 5 seconds if connection hangs
+        host,
+        port,
+        secure: port === 465,
+        connectionTimeout: 5000,
         auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
+          user: user_email,
+          pass,
         }
       });
 
       await transporter.sendMail({
-        from: `"SatkarmPuja" <${process.env.EMAIL_USER}>`,
+        from: `"SatkarmPuja" <${user_email}>`,
         to: user.email,
         subject: 'SatkarmPuja Login OTP',
         text: `Namaste ${user.fullName},\n\nYour OTP for secure login is: ${otp}\n\nThis OTP will expire in 5 minutes.\n\nThank you,\nSatkarmPuja Team`
