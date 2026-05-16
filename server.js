@@ -81,11 +81,39 @@ app.post('/api/auth/request-otp', async (req, res) => {
   const { phone } = req.body;
   
   try {
+    // Normalize: strip all spaces, dashes, parentheses
+    const cleaned = phone.trim().replace(/[\s\-()]/g, '');
+    
+    // Extract just the digits (remove + sign for comparison)
+    const digitsOnly = cleaned.replace(/\+/g, '');
+    
+    // Build all possible phone formats to search
+    const phoneLookups = new Set([cleaned]);
+    
+    // Try with and without + prefix
+    phoneLookups.add('+' + digitsOnly);
+    phoneLookups.add(digitsOnly);
+    
+    // If it's a 10-digit Indian number (no country code), add +91 prefix
+    if (digitsOnly.length === 10) {
+      phoneLookups.add('+91' + digitsOnly);
+      phoneLookups.add('91' + digitsOnly);
+      phoneLookups.add('+91 ' + digitsOnly); // with space
+    }
+    
+    // If it starts with 91 and is 12 digits, it's likely Indian with country code
+    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+      phoneLookups.add('+' + digitsOnly);
+      phoneLookups.add(digitsOnly.slice(2)); // just the 10 digits
+      phoneLookups.add('+91' + digitsOnly.slice(2));
+      phoneLookups.add('+91 ' + digitsOnly.slice(2)); // with space
+    }
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { phone: req.body.phone },
-          { email: req.body.phone }
+          ...[...phoneLookups].map(p => ({ phone: p })),
+          { email: cleaned }
         ]
       }
     });
@@ -149,11 +177,32 @@ app.post('/api/auth/login-otp', async (req, res) => {
   otpCache.delete(phone);
 
   try {
+    // Normalize: strip all spaces, dashes, parentheses
+    const cleaned = phone.trim().replace(/[\s\-()]/g, '');
+    const digitsOnly = cleaned.replace(/\+/g, '');
+    
+    const phoneLookups = new Set([cleaned]);
+    phoneLookups.add('+' + digitsOnly);
+    phoneLookups.add(digitsOnly);
+    
+    if (digitsOnly.length === 10) {
+      phoneLookups.add('+91' + digitsOnly);
+      phoneLookups.add('91' + digitsOnly);
+      phoneLookups.add('+91 ' + digitsOnly);
+    }
+    
+    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+      phoneLookups.add('+' + digitsOnly);
+      phoneLookups.add(digitsOnly.slice(2));
+      phoneLookups.add('+91' + digitsOnly.slice(2));
+      phoneLookups.add('+91 ' + digitsOnly.slice(2));
+    }
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { phone: req.body.phone },
-          { email: req.body.phone }
+          ...[...phoneLookups].map(p => ({ phone: p })),
+          { email: cleaned }
         ]
       }
     });
