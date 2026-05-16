@@ -65,6 +65,20 @@ app.get('/', (req, res) => {
 app.post('/api/auth/signup', async (req, res) => {
   const { fullName, email, phone, city, state, country } = req.body;
   try {
+    // Check if account already exists with same email or phone
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          ...(phone ? [{ phone }] : [])
+        ]
+      }
+    });
+    if (existing) {
+      const field = existing.email === email ? 'email' : 'phone number';
+      return res.status(400).json({ success: false, error: `An account with this ${field} already exists. Please login instead.` });
+    }
+
     const user = await prisma.user.create({
       data: { fullName, email, password: 'otp-user', phone, city, state, country, role: 'user' }
     });
