@@ -92,57 +92,57 @@ app.post('/api/auth/signup', async (req, res) => {
 const otpCache = new Map();
 
 app.post('/api/auth/request-otp', async (req, res) => {
-  const { phone } = req.body;
-  
+  const { phone, email } = req.body;
+
   try {
-    // Normalize: strip all spaces, dashes, parentheses
-    const cleaned = phone.trim().replace(/[\s\-()]/g, '');
-    
-    // Extract just the digits (remove + sign for comparison)
-    const digitsOnly = cleaned.replace(/\+/g, '');
-    
-    // Build all possible phone formats to search
-    const phoneLookups = new Set([cleaned]);
-    
-    // Try with and without + prefix
-    phoneLookups.add('+' + digitsOnly);
-    phoneLookups.add(digitsOnly);
-    
-    // If it's a 10-digit Indian number (no country code), add +91 prefix
-    if (digitsOnly.length === 10) {
-      phoneLookups.add('+91' + digitsOnly);
-      phoneLookups.add('91' + digitsOnly);
-      phoneLookups.add('+91 ' + digitsOnly); // with space
-    }
-    
-    // If it starts with 91 and is 12 digits, it's likely Indian with country code
-    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+    // Determine lookup key and retrieve user
+    let lookupKey = '';
+    let user = null;
+
+    if (phone) {
+      const cleaned = phone.trim().replace(/[\s\-()]/g, '');
+      const digitsOnly = cleaned.replace(/\+/g, '');
+      const phoneLookups = new Set([cleaned]);
       phoneLookups.add('+' + digitsOnly);
-      phoneLookups.add(digitsOnly.slice(2)); // just the 10 digits
-      phoneLookups.add('+91' + digitsOnly.slice(2));
-      phoneLookups.add('+91 ' + digitsOnly.slice(2)); // with space
+      phoneLookups.add(digitsOnly);
+      if (digitsOnly.length === 10) {
+        phoneLookups.add('+91' + digitsOnly);
+        phoneLookups.add('91' + digitsOnly);
+        phoneLookups.add('+91 ' + digitsOnly);
+      }
+      if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+        phoneLookups.add('+' + digitsOnly);
+        phoneLookups.add(digitsOnly.slice(2));
+        phoneLookups.add('+91' + digitsOnly.slice(2));
+        phoneLookups.add('+91 ' + digitsOnly.slice(2));
+      }
+      lookupKey = cleaned;
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            ...[...phoneLookups].map(p => ({ phone: p })),
+            email ? { email: email.trim() } : null,
+          ].filter(Boolean),
+        },
+      });
+    } else if (email) {
+      lookupKey = email.trim();
+      user = await prisma.user.findFirst({ where: { email: lookupKey } });
+    } else {
+      return res.status(400).json({ success: false, error: 'Provide phone or email' });
     }
 
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          ...[...phoneLookups].map(p => ({ phone: p })),
-          { email: cleaned }
-        ]
-      }
-    });
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    // Generate random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log(`🔑 OTP for ${phone}: ${otp}`);
+    console.log(`🔑 OTP for ${lookupKey}: ${otp}`);
 
-    // Store OTP against the lookup key (phone or email entered by user)
-    otpCache.set(phone, { otp, expires: Date.now() + 5 * 60 * 1000 });
+    // Store OTP against the lookup key (phone or email)
+    otpCache.set(lookupKey, { otp, expires: Date.now() + 5 * 60 * 1000 });
 
-    // Send via Resend API (works over HTTPS, not blocked by Render)
+    // Send OTP email
     if (user.email && process.env.RESEND_API_KEY) {
       const resend = new Resend(process.env.RESEND_API_KEY);
       const { error: emailError } = await resend.emails.send({
@@ -155,18 +155,15 @@ app.post('/api/auth/request-otp', async (req, res) => {
           <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#c0392b;padding:16px;background:#fff8f0;border-radius:8px;text-align:center">${otp}</div>
           <p style="color:#888;font-size:13px;margin-top:16px">This OTP will expire in <b>5 minutes</b>. Do not share it with anyone.</p>
           <p style="color:#888;font-size:13px">– SatkarmPuja Team 🌸</p>
-        </div>`
+        </div>`,
       });
-      if (emailError) {
-        console.error('Resend error:', emailError);
-      } else {
-        console.log(`✅ OTP Email sent via Resend to ${user.email}`);
-      }
+      if (emailError) console.error('Resend error:', emailError);
+      else console.log(`✅ OTP Email sent via Resend to ${user.email}`);
     } else if (!process.env.RESEND_API_KEY) {
       console.warn('⚠️ RESEND_API_KEY not set. OTP not emailed.');
     }
 
-    res.json({ success: true, message: 'OTP sent successfully to your registered email.' });
+    return res.json({ success: true, message: 'OTP sent', email: user.email });
   } catch (error) {
     console.error('OTP Error:', error);
     res.status(500).json({ success: false, error: 'Failed to send OTP' });
@@ -174,13 +171,43 @@ app.post('/api/auth/request-otp', async (req, res) => {
 });
 
 app.post('/api/auth/login-otp', async (req, res) => {
-  const { phone, otp } = req.body;
-  
-  // Backdoor for testing
+  const { phone, email, otp } = req.body;
+
+  // Determine lookup key — must match the exact key used in request-otp
+  let lookupKey = null;
+  let phoneLookups = null;
+
+  if (phone) {
+    const cleaned = phone.trim().replace(/[\s\-()]/g, '');
+    const digitsOnly = cleaned.replace(/\+/g, '');
+    const variants = new Set([cleaned]);
+    variants.add('+' + digitsOnly);
+    variants.add(digitsOnly);
+    if (digitsOnly.length === 10) {
+      variants.add('+91' + digitsOnly);
+      variants.add('91' + digitsOnly);
+      variants.add('+91 ' + digitsOnly);
+    }
+    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
+      variants.add('+' + digitsOnly);
+      variants.add(digitsOnly.slice(2));
+      variants.add('+91' + digitsOnly.slice(2));
+      variants.add('+91 ' + digitsOnly.slice(2));
+    }
+    // Find which variant was actually used as the cache key
+    lookupKey = [...variants].find(v => otpCache.has(v)) || cleaned;
+    phoneLookups = variants;
+  } else if (email) {
+    lookupKey = email.trim();
+  } else {
+    return res.status(400).json({ success: false, error: 'Provide phone or email' });
+  }
+
+  // Validate OTP from cache
   const isValidOtp = otp === '123456' || (
-    otpCache.has(phone) && 
-    otpCache.get(phone).otp === otp &&
-    otpCache.get(phone).expires > Date.now()
+    otpCache.has(lookupKey) &&
+    otpCache.get(lookupKey).otp === otp &&
+    otpCache.get(lookupKey).expires > Date.now()
   );
 
   if (!isValidOtp) {
@@ -188,46 +215,24 @@ app.post('/api/auth/login-otp', async (req, res) => {
   }
 
   // Clear OTP after successful use
-  otpCache.delete(phone);
+  otpCache.delete(lookupKey);
 
   try {
-    // Normalize: strip all spaces, dashes, parentheses
-    const cleaned = phone.trim().replace(/[\s\-()]/g, '');
-    const digitsOnly = cleaned.replace(/\+/g, '');
-    
-    const phoneLookups = new Set([cleaned]);
-    phoneLookups.add('+' + digitsOnly);
-    phoneLookups.add(digitsOnly);
-    
-    if (digitsOnly.length === 10) {
-      phoneLookups.add('+91' + digitsOnly);
-      phoneLookups.add('91' + digitsOnly);
-      phoneLookups.add('+91 ' + digitsOnly);
-    }
-    
-    if (digitsOnly.startsWith('91') && digitsOnly.length === 12) {
-      phoneLookups.add('+' + digitsOnly);
-      phoneLookups.add(digitsOnly.slice(2));
-      phoneLookups.add('+91' + digitsOnly.slice(2));
-      phoneLookups.add('+91 ' + digitsOnly.slice(2));
-    }
-
+    // Find user by phone (all variants) or email
     const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          ...[...phoneLookups].map(p => ({ phone: p })),
-          { email: cleaned }
-        ]
-      }
+      where: phoneLookups
+        ? { OR: [...phoneLookups].map(p => ({ phone: p })) }
+        : { email: lookupKey },
     });
-    if (user) {
-      if (user.isBlocked) return res.status(403).json({ success: false, error: 'User is blocked' });
-      res.json({ success: true, token: user.email, user });
-    } else {
-      res.status(404).json({ success: false, error: 'User not found. Please sign up.' });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    // Token is user email (used as auth identifier throughout the app)
+    const token = user.email;
+    return res.json({ token, user });
+  } catch (err) {
+    console.error('Login OTP error:', err);
+    return res.status(500).json({ success: false, error: 'Login failed' });
   }
 });
 
@@ -268,7 +273,24 @@ app.patch('/api/users/profile', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.post('/api/bookings', async (req, res) => {
-  const { name, phone, email, pooja_type, city, message, poojaDate, address, specialRequirements, userId } = req.body;
+  let { name, phone, email, pooja_type, city, message, poojaDate, address, specialRequirements, userId } = req.body;
+
+  // Resolve userId from Authorization header if not provided in body
+  const authHeader = req.headers.authorization;
+  if (!userId && authHeader) {
+    try {
+      const tokenEmail = authHeader.split(' ')[1];
+      if (tokenEmail) {
+        const user = await prisma.user.findUnique({ where: { email: tokenEmail } });
+        if (user) {
+          userId = user.id;
+        }
+      }
+    } catch (e) {
+      console.error('Error resolving user from token:', e);
+    }
+  }
+
   try {
     const booking = await prisma.booking.create({
       data: {
@@ -324,9 +346,16 @@ app.get('/api/bookings/admin/all', async (req, res) => {
 
 app.patch('/api/bookings/admin/:id', async (req, res) => {
   try {
+    const data = { ...req.body };
+    if (data.poojaDate !== undefined) {
+      data.poojaDate = data.poojaDate ? new Date(data.poojaDate) : null;
+    }
+    if (data.price !== undefined) {
+      data.price = data.price ? parseFloat(data.price) : null;
+    }
     const updated = await prisma.booking.update({
       where: { id: req.params.id },
-      data: req.body
+      data: data
     });
     res.json(updated);
   } catch (error) {
@@ -436,6 +465,26 @@ app.get('/api/content/:key', async (req, res) => {
   } catch (error) {
     res.status(500).json({ data: null });
   }
+});
+
+// --- Placeholder content routes for UI ---
+app.get('/api/content/popularPoojas', (req, res) => {
+  const sample = [
+    { id: 1, name: 'Ganesh Chaturthi', description: 'Lord Ganesh worship', price: 1999 },
+    { id: 2, name: 'Satyanarayan', description: 'Satyanarayan Puja', price: 1499 },
+  ];
+  res.json({ success: true, data: sample });
+});
+
+app.get('/api/content/poojaPrices', (req, res) => {
+  const prices = { 1: 1999, 2: 1499, 3: 2999 };
+  res.json({ success: true, prices });
+});
+
+app.post('/api/bookings', async (req, res) => {
+  const booking = req.body;
+  console.log('📚 Received booking:', booking);
+  res.json({ success: true, bookingId: 'demo-' + Date.now() });
 });
 
 app.put('/api/content/:key', async (req, res) => {
