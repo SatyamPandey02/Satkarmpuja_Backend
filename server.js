@@ -333,6 +333,38 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
+app.get('/api/bookings/receipt/:id', async (req, res) => {
+  try {
+    const booking = await prisma.booking.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!booking) {
+      return res.status(404).json({ success: false, error: 'Booking not found' });
+    }
+    if (booking.status !== 'payment-completed' && booking.status !== 'completed') {
+      return res.status(403).json({ success: false, error: 'Receipt only available for completed payments' });
+    }
+    res.json({
+      success: true,
+      data: {
+        id: booking.id,
+        name: booking.name,
+        email: booking.email,
+        phone: booking.phone,
+        pooja_type: booking.pooja_type,
+        city: booking.city,
+        price: booking.price,
+        status: booking.status,
+        poojaDate: booking.poojaDate,
+        razorpayOrderId: booking.razorpayOrderId,
+        created_at: booking.created_at
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Helper to send email notification on booking status update
 async function sendStatusUpdateEmail(booking, oldStatus, newStatus) {
   let subject = 'SatkarmPuja Booking Update';
@@ -376,11 +408,18 @@ async function sendStatusUpdateEmail(booking, oldStatus, newStatus) {
       break;
     case 'payment-completed':
       subject = `✅ Payment Successful: ${booking.pooja_type} - SatkarmPuja`;
-      messageContent = `Thank you! We have successfully received your payment of <b>₹${booking.price}</b> for your <b>${booking.pooja_type}</b> booking. Your booking status is now updated to Payment Completed.`;
+      messageContent = `Thank you! We have successfully received your payment of <b>₹${booking.price}</b> for your <b>${booking.pooja_type}</b> booking. Your booking status is now updated to Payment Completed. You can download your official payment receipt below.`;
       statusLabel = 'Payment Completed';
       statusBg = '#e0f2f1';
       statusColor = '#00695c';
       statusBorder = '#b2dfdb';
+      actionButton = `
+        <div style="text-align: center; margin: 32px 0 16px 0;">
+          <a href="${dashboardUrl}/#/dashboard?downloadReceipt=${booking.id}" style="background-color: #8B1A1A; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(139,26,26,0.2);">
+            Download Receipt
+          </a>
+        </div>
+      `;
       break;
     case 'pooja-performed':
       subject = `🌸 Puja Successfully Performed - SatkarmPuja`;
