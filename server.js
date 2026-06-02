@@ -401,7 +401,7 @@ async function sendStatusUpdateEmail(booking, oldStatus, newStatus) {
     : 'Not scheduled yet';
 
   const htmlBody = `
-    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #f0e0c0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background-color: #ffffff;">
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; width: 92%; margin: 20px auto; padding: 0; border: 1px solid #f0e0c0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background-color: #ffffff;">
       <!-- Header -->
       <div style="background: linear-gradient(135deg, #8B1A1A 0%, #a32a2a 100%); padding: 32px 24px; text-align: center;">
         <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 1px;">🙏 SatkarmPuja</h1>
@@ -415,37 +415,38 @@ async function sendStatusUpdateEmail(booking, oldStatus, newStatus) {
           ${messageContent}
         </p>
         
-        <!-- Details Card -->
-        <div style="background-color: #fffaf4; border: 1px solid #ffe8cc; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+        <!-- Details Card (Mobile Responsive Stacked Design) -->
+        <div style="background-color: #fffaf4; border: 1px solid #ffe8cc; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
           <h3 style="color: #d35400; margin-top: 0; margin-bottom: 16px; font-size: 16px; border-bottom: 1px solid #ffe8cc; padding-bottom: 8px;">Booking Reference Details</h3>
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px; width: 40%;">Puja Type:</td>
-              <td style="padding: 6px 0; color: #2c3e50; font-size: 14px; font-weight: 600;">${booking.pooja_type}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Booking ID:</td>
-              <td style="padding: 6px 0; color: #7f8c8d; font-size: 14px; font-family: monospace;">${booking.id}</td>
-            </tr>
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Scheduled Date:</td>
-              <td style="padding: 6px 0; color: #2c3e50; font-size: 14px;">${dateFormatted}</td>
-            </tr>
-            ${booking.price ? `
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Price:</td>
-              <td style="padding: 6px 0; color: #8B1A1A; font-size: 16px; font-weight: 700;">₹${booking.price}</td>
-            </tr>
-            ` : ''}
-            <tr>
-              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Current Status:</td>
-              <td style="padding: 6px 0; font-size: 14px;">
-                <span style="background-color: ${statusBg}; color: ${statusColor}; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 12px; border: 1px solid ${statusBorder}; display: inline-block;">
-                  ${statusLabel}
-                </span>
-              </td>
-            </tr>
-          </table>
+          
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: bold; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.8px;">Puja Type</div>
+            <div style="font-size: 15px; color: #2c3e50; font-weight: 600; margin-top: 2px;">${booking.pooja_type}</div>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: bold; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.8px;">Booking ID</div>
+            <div style="font-size: 13px; color: #7f8c8d; font-family: monospace; word-break: break-all; word-wrap: break-word; margin-top: 2px;">${booking.id}</div>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: bold; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.8px;">Scheduled Date</div>
+            <div style="font-size: 14px; color: #2c3e50; margin-top: 2px;">${dateFormatted}</div>
+          </div>
+
+          ${booking.price ? `
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 11px; font-weight: bold; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.8px;">Price</div>
+            <div style="font-size: 16px; color: #8B1A1A; font-weight: 700; margin-top: 2px;">₹${booking.price}</div>
+          </div>
+          ` : ''}
+
+          <div style="margin-bottom: 4px;">
+            <div style="font-size: 11px; font-weight: bold; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px;">Current Status</div>
+            <span style="background-color: ${statusBg}; color: ${statusColor}; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; border: 1px solid ${statusBorder}; display: inline-block;">
+              ${statusLabel}
+            </span>
+          </div>
         </div>
 
         ${actionButton}
