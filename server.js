@@ -333,9 +333,163 @@ app.get('/api/bookings', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ADMIN
-// ═══════════════════════════════════════════════════════════════════════════════
+// Helper to send email notification on booking status update
+async function sendStatusUpdateEmail(booking, oldStatus, newStatus) {
+  let subject = 'SatkarmPuja Booking Update';
+  let messageContent = '';
+  let statusLabel = '';
+  let statusBg = '';
+  let statusColor = '';
+  let statusBorder = '';
+  let actionButton = '';
+
+  const dashboardUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  switch (newStatus) {
+    case 'confirmed':
+      subject = `🙏 Booking Confirmed: ${booking.pooja_type} - SatkarmPuja`;
+      messageContent = `We are pleased to inform you that your booking for the sacred <b>${booking.pooja_type}</b> has been successfully <b>Confirmed</b> by our team. We are making all the necessary spiritual arrangements for your puja.`;
+      statusLabel = 'Confirmed';
+      statusBg = '#e8f5e9';
+      statusColor = '#2e7d32';
+      statusBorder = '#c8e6c9';
+      break;
+    case 'payment-pending':
+      subject = `🌸 Payment Requested: ${booking.pooja_type} - SatkarmPuja`;
+      messageContent = `The price for your booking of <b>${booking.pooja_type}</b> has been updated to <b>₹${booking.price}</b>. Please proceed to make the payment from your dashboard to finalize and secure your booking.`;
+      statusLabel = 'Payment Pending';
+      statusBg = '#fff8e1';
+      statusColor = '#f57f17';
+      statusBorder = '#ffe082';
+      actionButton = `
+        <div style="text-align: center; margin: 32px 0 16px 0;">
+          <a href="${dashboardUrl}" style="background-color: #8B1A1A; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(139,26,26,0.2);">
+            Pay Now
+          </a>
+        </div>
+      `;
+      break;
+    case 'payment-completed':
+      subject = `✅ Payment Successful: ${booking.pooja_type} - SatkarmPuja`;
+      messageContent = `Thank you! We have successfully received your payment of <b>₹${booking.price}</b> for your <b>${booking.pooja_type}</b> booking. Your booking status is now updated to Payment Completed.`;
+      statusLabel = 'Payment Completed';
+      statusBg = '#e0f2f1';
+      statusColor = '#00695c';
+      statusBorder = '#b2dfdb';
+      break;
+    case 'pooja-performed':
+      subject = `🌸 Puja Successfully Performed - SatkarmPuja`;
+      messageContent = `We are blessed to inform you that the sacred <b>${booking.pooja_type}</b> has been successfully performed. May the divine deities shower you and your family with peace, health, prosperity, and endless blessings.`;
+      statusLabel = 'Puja Performed';
+      statusBg = '#efebe9';
+      statusColor = '#4e342e';
+      statusBorder = '#d7ccc8';
+      break;
+    case 'pending':
+    default:
+      subject = `ℹ️ Booking Status Update: ${booking.pooja_type} - SatkarmPuja`;
+      messageContent = `The status of your booking for the sacred <b>${booking.pooja_type}</b> has been updated to <b>Pending</b>. Our team will review your booking and update the status shortly.`;
+      statusLabel = 'Pending';
+      statusBg = '#f3e5f5';
+      statusColor = '#6a1b9a';
+      statusBorder = '#e1bee7';
+      break;
+  }
+
+  const dateFormatted = booking.poojaDate
+    ? new Date(booking.poojaDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'Not scheduled yet';
+
+  const htmlBody = `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 0; border: 1px solid #f0e0c0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background-color: #ffffff;">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, #8B1A1A 0%, #a32a2a 100%); padding: 32px 24px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 1px;">🙏 SatkarmPuja</h1>
+        <p style="color: #ffd8d8; margin: 8px 0 0 0; font-size: 14px;">Connecting you to divine rituals</p>
+      </div>
+      
+      <!-- Content Body -->
+      <div style="padding: 32px 24px; color: #2c3e50; line-height: 1.6;">
+        <h2 style="color: #8B1A1A; margin-top: 0; font-size: 20px;">Namaste ${booking.name},</h2>
+        <p style="font-size: 16px; color: #34495e; margin-bottom: 24px;">
+          ${messageContent}
+        </p>
+        
+        <!-- Details Card -->
+        <div style="background-color: #fffaf4; border: 1px solid #ffe8cc; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+          <h3 style="color: #d35400; margin-top: 0; margin-bottom: 16px; font-size: 16px; border-bottom: 1px solid #ffe8cc; padding-bottom: 8px;">Booking Reference Details</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px; width: 40%;">Puja Type:</td>
+              <td style="padding: 6px 0; color: #2c3e50; font-size: 14px; font-weight: 600;">${booking.pooja_type}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Booking ID:</td>
+              <td style="padding: 6px 0; color: #7f8c8d; font-size: 14px; font-family: monospace;">${booking.id}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Scheduled Date:</td>
+              <td style="padding: 6px 0; color: #2c3e50; font-size: 14px;">${dateFormatted}</td>
+            </tr>
+            ${booking.price ? `
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Price:</td>
+              <td style="padding: 6px 0; color: #8B1A1A; font-size: 16px; font-weight: 700;">₹${booking.price}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td style="padding: 6px 0; font-weight: bold; color: #7f8c8d; font-size: 14px;">Current Status:</td>
+              <td style="padding: 6px 0; font-size: 14px;">
+                <span style="background-color: ${statusBg}; color: ${statusColor}; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 12px; border: 1px solid ${statusBorder}; display: inline-block;">
+                  ${statusLabel}
+                </span>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        ${actionButton}
+      </div>
+      
+      <!-- Footer -->
+      <div style="background-color: #fcfbf9; padding: 24px; text-align: center; border-top: 1px solid #f0e0c0;">
+        <p style="margin: 0; font-size: 14px; color: #7f8c8d;">🌸 May the divine energy bring peace and prosperity to your home.</p>
+        <p style="margin: 8px 0 0 0; font-size: 12px; color: #bdc3c7;">This is an automated notification from SatkarmPuja. Please do not reply directly to this email.</p>
+      </div>
+    </div>
+  `;
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { error } = await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL || 'SatkarmPuja <onboarding@resend.dev>',
+        to: booking.email,
+        subject: subject,
+        html: htmlBody,
+      });
+      if (error) {
+        console.error(`❌ Error sending status update email to ${booking.email} via Resend:`, error);
+      } else {
+        console.log(`✅ Status update email sent to ${booking.email} via Resend for status: ${newStatus}`);
+      }
+    } catch (err) {
+      console.error(`❌ Exception sending email to ${booking.email}:`, err);
+    }
+  } else {
+    console.log(`\n======================================================================`);
+    console.log(`✉️  MOCK EMAIL SENT TO: ${booking.email}`);
+    console.log(`📌 SUBJECT: ${subject}`);
+    console.log(`📄 STATUS UPDATE: ${oldStatus} ➔ ${newStatus}`);
+    console.log(`🔗 DASHBOARD URL: ${dashboardUrl}`);
+    console.log(`📦 DETAILS:`);
+    console.log(`   - Name: ${booking.name}`);
+    console.log(`   - Puja: ${booking.pooja_type}`);
+    console.log(`   - Price: ₹${booking.price || 0}`);
+    console.log(`   - Scheduled Date: ${dateFormatted}`);
+    console.log(`======================================================================\n`);
+  }
+}
 
 app.get('/api/bookings/admin/all', async (req, res) => {
   try {
@@ -355,10 +509,27 @@ app.patch('/api/bookings/admin/:id', async (req, res) => {
     if (data.price !== undefined) {
       data.price = data.price ? parseFloat(data.price) : null;
     }
+
+    // Get old booking to check for status changes
+    const bookingBefore = await prisma.booking.findUnique({
+      where: { id: req.params.id }
+    });
+    if (!bookingBefore) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+
     const updated = await prisma.booking.update({
       where: { id: req.params.id },
       data: data
     });
+
+    // Send email notification if status changed
+    if (data.status !== undefined && data.status !== bookingBefore.status) {
+      sendStatusUpdateEmail(updated, bookingBefore.status, updated.status).catch(err => {
+        console.error('Failed to send status update email:', err);
+      });
+    }
+
     res.json(updated);
   } catch (error) {
     res.status(400).json({ error: error.message });
