@@ -341,9 +341,14 @@ async function sendStatusUpdateEmail(booking, oldStatus, newStatus) {
   let statusBg = '';
   let statusColor = '';
   let statusBorder = '';
-  let actionButton = '';
-
   const dashboardUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  let actionButton = `
+    <div style="text-align: center; margin: 32px 0 16px 0;">
+      <a href="${dashboardUrl}" style="background-color: #8B1A1A; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(139,26,26,0.2);">
+        Check Booking Status
+      </a>
+    </div>
+  `;
 
   switch (newStatus) {
     case 'confirmed':
