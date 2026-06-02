@@ -3,6 +3,8 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const { PrismaClient } = require('@prisma/client');
 const { Resend } = require('resend');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
 
 dotenv.config();
 
@@ -508,36 +510,79 @@ app.put('/api/content/:key', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PAYMENTS (MOCK — replace with real Razorpay in production)
+// PAYMENTS — Razorpay Live Integration
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// CREATE ORDER — called when user clicks "Pay Now"
 app.post('/api/payments/create-order', async (req, res) => {
   const { bookingId } = req.body;
   try {
     const booking = await prisma.booking.findUnique({ where: { id: bookingId } });
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
 
-    res.json({
-      orderId: 'order_' + Math.random().toString(36).substr(2, 9),
-      amount: (booking.price || 0) * 100,
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      return res.status(500).json({ error: 'Razorpay is not configured on the server.' });
+    }
+
+    const order = await razorpay.orders.create({
+      amount: Math.round((booking.price || 0) * 100), // convert to paise
       currency: 'INR',
-      keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_mock'
+      receipt: `booking_${bookingId}`.slice(0, 40),
+      notes: { bookingId },
+    });
+
+    res.json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Razorpay create-order error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create payment order' });
   }
 });
 
+// VERIFY PAYMENT — HMAC SHA256 signature check (prevents fake payment confirmations)
 app.post('/api/payments/verify-payment', async (req, res) => {
-  const { bookingId, razorpay_order_id } = req.body;
+  const { bookingId, razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ success: false, error: 'Missing payment fields' });
+  }
+
   try {
+    // Verify signature using HMAC SHA256
+    const body = razorpay_order_id + '|' + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(body)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      console.warn('⚠️ Invalid Razorpay signature for booking:', bookingId);
+      return res.status(400).json({ success: false, error: 'Invalid payment signature. Payment rejected.' });
+    }
+
+    // Signature valid — mark booking as paid
     const updated = await prisma.booking.update({
       where: { id: bookingId },
-      data: { status: 'payment-completed', razorpayOrderId: razorpay_order_id }
+      data: {
+        status: 'payment-completed',
+        razorpayOrderId: razorpay_order_id,
+      },
     });
+
+    console.log(`✅ Payment verified for booking ${bookingId} | Payment ID: ${razorpay_payment_id}`);
     res.json({ success: true, booking: updated });
   } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
+    console.error('Razorpay verify-payment error:', error);
+    res.status(400).json({ success: false, error: error.message || 'Payment verification failed' });
   }
 });
 
